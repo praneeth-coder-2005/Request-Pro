@@ -1,17 +1,16 @@
+%%writefile your_movie_bot/handlers/callback_handler.py
 # handlers/callback_handler.py
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery
 import logging
 
-# Import handler functions from our new sub-modules
+# Import handler functions from our sub-modules
 from .callbacks.user_requests import handle_select_tmdb_callback, handle_none_correct_callback, handle_confirm_request_callback
 from .callbacks.admin_actions import (
     handle_admin_approve_callback,
     handle_admin_reject_callback,
-    handle_admin_search_channel_callback, # NEW
-    handle_admin_manual_link_callback,    # NEW
-    handle_admin_select_channel_msg_callback # NEW
 )
+from .callbacks.user_fulfillment_actions import handle_user_select_quality_callback # NEW import
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +38,9 @@ async def handle_callback_query(client: Client, callback_query: CallbackQuery):
         await handle_admin_approve_callback(client, callback_query)
     elif data.startswith("admin_reject_"):
         await handle_admin_reject_callback(client, callback_query)
-    elif data.startswith("admin_search_channel_"): # NEW
-        await handle_admin_search_channel_callback(client, callback_query)
-    elif data.startswith("admin_manual_link_"): # NEW
-        await handle_admin_manual_link_callback(client, callback_query)
-    elif data.startswith("admin_select_channel_msg_"): # NEW
-        await handle_admin_select_channel_msg_callback(client, callback_query)
+    elif data.startswith("user_select_quality_"): # NEW route for user selecting quality
+        await handle_user_select_quality_callback(client, callback_query)
     else:
         logger.warning(f"Unknown callback data received: {data} from user {user_id}")
         await callback_query.message.edit_text("Unknown action. Please try again or start over.")
-        
+
