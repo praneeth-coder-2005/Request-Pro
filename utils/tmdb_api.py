@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/utils/tmdb_api.py
 import logging
 import asyncio # New import for running synchronous code asynchronously
 from tmdbv3api import TMDb, Movie # New imports for the tmdbv3api library
