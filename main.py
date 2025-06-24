@@ -47,17 +47,16 @@ async def main():
 
     await init_db()
 
-    async with app:
+        async with app:
         logger.info("Bot client initialized. Setting bot commands...")
         await set_bot_commands(app)
         logger.info("Bot started! Press Ctrl+C to stop.")
-        await app.idle()
-        logger.info("Bot stopped.")
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user.")
-    except Exception as e:
-        logger.exception(f"An unexpected error occurred: {e}")
+        # The bot will now stay running within the 'async with app:' block
+        # until the Colab cell is stopped or an external interruption occurs.
+        # Remove the 'await app.idle()' line.
+        # You can add a simple infinite loop or just let it run.
+        # For Colab, often the simple 'async with app:' block is sufficient.
+        while True:
+            await asyncio.sleep(1) # Keep the event loop alive and responsive
+        # The following line will only be reached if the loop breaks or the app stops externally
+        # logger.info("Bot stopped.") # This line is often unreachable in practice with idle bots
