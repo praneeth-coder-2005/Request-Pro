@@ -1,224 +1,166 @@
-# handlers/callbacks/user_requests.py
+%%writefile your_movie_bot/handlers/callbacks/user_requests.py
 import logging
 from pyrogram import Client
-from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from pyrogram.enums import ChatAction, ParseMode # ADDED ParseMode here
+from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.enums import ParseMode
 
-from utils.tmdb_api import get_movie_details_tmdb, get_tmdb_image_url
-from utils.database import get_user_state, clear_user_state, set_user_state, add_movie_request, update_request_status, get_request_by_tmdb_id, update_request_admin_message_id
-from utils.helpers import search_channel_for_movie, format_movie_info
-from config import ADMIN_CHAT_ID, MOVIE_CHANNEL_ID # Include ADMIN_CHAT_ID here
+from utils.database import get_user_state, clear_user_state, add_movie_request, update_request_status
+from config import ADMIN_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
 async def handle_select_tmdb_callback(client: Client, callback_query: CallbackQuery):
-    """Handles user selecting a movie from TMDB search results."""
-    data = callback_query.data
+    """
+    Handles the user's selection of a movie from TMDB search results.
+    Asks for confirmation and forwards to admin.
+    """
+    user_id = callback_query.from_user.id
+    selected_tmdb_id = int(callback_query.data.split("_")[2]) # Extract TMDB ID from callback_data
+    message = callback_query.message
+
+    state, state_data = await get_user_state(user_id)
+
+    if state != "awaiting_tmdb_selection" or not state_data or "results" not in state_data:
+        await message.edit_text("Your previous search session has expired. Please use `/request <movie name>` again to start a new search.")
+        await clear_user_state(user_id)
+        return
+
+    # Find the selected movie from the stored results
+    selected_movie = next((m for m in state_data["results"] if m["id"] == selected_tmdb_id), None)
+
+    if not selected_movie:
+        await message.edit_text("Selected movie not found in results. Please try searching again.")
+        await clear_user_state(user_id)
+        return
+
+    tmdb_title = selected_movie.get("title", "N/A")
+    tmdb_year = selected_movie.get("release_date", "N/A").split("-")[0]
+    tmdb_poster_path = selected_movie.get("poster_path")
+
+    confirmation_text = (
+        f"You selected: **{tmdb_title}** ({tmdb_year})\n\n"
+        "Is this correct? Click 'Confirm Request' to proceed, or 'Cancel' to choose again."
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Confirm Request", callback_data=f"confirm_request_{selected_tmdb_id}")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="tmdb_none_correct")] # Re-use none correct to cancel/restart
+    ])
+
+    # Edit the original message to show confirmation
+    try:
+        await message.edit_text(
+            confirmation_text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        # Store the message_id of this confirmation message in user state
+        await set_user_state(user_id, "awaiting_confirmation", {
+            "tmdb_id": selected_tmdb_id,
+            "tmdb_title": tmdb_title,
+            "tmdb_poster_path": tmdb_poster_path,
+            "message_id": message.id # The ID of the message being edited
+        })
+        logger.info(f"User {user_id} selected TMDB ID {selected_tmdb_id} for confirmation.")
+
+    except Exception as e:
+        logger.error(f"Error editing message for user {user_id} during TMDB selection: {e}")
+        await message.reply_text("An error occurred. Please try `/request` again.")
+        await clear_user_state(user_id)
+
+
+async def handle_none_correct_callback(client: Client, callback_query: CallbackQuery):
+    """Handles user indicating none of the TMDB results were correct or cancelling."""
     user_id = callback_query.from_user.id
     message = callback_query.message
-    chat_id = message.chat.id
 
-    logger.info(f"User {user_id} selected a TMDB movie option: {data}")
+    await message.edit_text(
+        "Okay, please try a new `/request <movie name>` with a more precise title or different spelling."
+    )
+    await clear_user_state(user_id)
+    logger.info(f"User {user_id} indicated none of the TMDB results were correct.")
+
+
+async def handle_confirm_request_callback(client: Client, callback_query: CallbackQuery):
+    """
+    Handles the user's confirmation of a movie request.
+    Adds to DB, notifies admin, and updates user message.
+    """
+    user_id = callback_query.from_user.id
+    message = callback_query.message
+    selected_tmdb_id = int(callback_query.data.split("_")[2])
+
     state, state_data = await get_user_state(user_id)
-    logger.info(f"User {user_id} current state: {state}, data: {state_data}")
 
-    if state != "awaiting_tmdb_selection" or not state_data or "tmdb_results" not in state_data:
-        logger.warning(f"User {user_id} clicked an old or invalid 'select_tmdb' button. State: {state}")
-        await message.edit_text("This selection is no longer valid. Please start a new `/request`.")
+    if state != "awaiting_confirmation" or not state_data or state_data.get("tmdb_id") != selected_tmdb_id:
+        await message.edit_text("This request session has expired or is invalid. Please use `/request <movie name>` to start a new one.")
         await clear_user_state(user_id)
         return
 
-    selected_index = int(data.split("_")[2])
-    tmdb_results = state_data["tmdb_results"]
+    tmdb_title = state_data.get("tmdb_title")
+    tmdb_poster_path = state_data.get("tmdb_poster_path")
+    user_name = callback_query.from_user.full_name or f"User_{user_id}"
 
-    if selected_index >= len(tmdb_results) or selected_index < 0:
-        logger.error(f"User {user_id} selected invalid index {selected_index} for TMDB results (length {len(tmdb_results)}).")
-        await message.edit_text("Invalid selection. Please try again or start a new `/request`.")
-        return
+    # First, update the user's original message
+    await message.edit_text(
+        f"✅ Request confirmed for **{tmdb_title}**. I've notified the administrator. "
+        "You will be notified here when the movie is available! Thank you for your patience.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=None # Remove buttons
+    )
+    logger.info(f"User {user_id} confirmed request for TMDB ID {selected_tmdb_id}.")
 
-    selected_movie_preview = tmdb_results[selected_index]
-    tmdb_id = selected_movie_preview["id"]
+    # Add request to database (initial 'pending' status)
+    request_id = await add_movie_request(
+        user_id=user_id,
+        user_name=user_name,
+        tmdb_id=selected_tmdb_id,
+        tmdb_title=tmdb_title,
+        tmdb_poster_path=tmdb_poster_path,
+        admin_message_id=None # Will be updated after forwarding
+    )
+    logger.info(f"Movie request {request_id} added to DB for user {user_id}.")
 
-    await client.send_chat_action(chat_id, ChatAction.TYPING)
+    # Forward request to admin
+    admin_message_text = (
+        f"🎬 **New Movie Request!**\n\n"
+        f"**User:** {user_name} (ID: `{user_id}`)\n"
+        f"**Movie:** **{tmdb_title}** (TMDB ID: `{selected_tmdb_id}`)\n"
+        f"**Status:** `Pending Approval`\n\n"
+        "Please click 'Approve & Auto Index' if the movie is already uploaded to the channel with `#TMDB{ID}` in its caption."
+    )
 
-    full_movie_details = await get_movie_details_tmdb(tmdb_id)
-    if not full_movie_details:
-        logger.error(f"Failed to retrieve full TMDB details for ID {tmdb_id} for user {user_id}.")
-        await message.edit_text("Could not retrieve full movie details. Please try again or search for a different movie.")
-        await clear_user_state(user_id)
-        return
-
-    formatted_info = format_movie_info(full_movie_details)
-    poster_url = get_tmdb_image_url(full_movie_details.get("poster_path"))
-
-    await set_user_state(user_id, "awaiting_confirmation", {"movie_data": full_movie_details})
-    logger.info(f"User {user_id} entered 'awaiting_confirmation' state with movie: {full_movie_details.get('title')}")
-
-    confirmation_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Yes, this is correct!", callback_data=f"confirm_request_true")],
-        [InlineKeyboardButton("❌ No, go back to search results", callback_data=f"confirm_request_false")]
+    admin_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Approve & Auto Index", callback_data=f"admin_approve_{request_id}")],
+        [InlineKeyboardButton("❌ Reject Request", callback_data=f"admin_reject_{request_id}")]
     ])
 
     try:
-        if poster_url:
-            await message.edit_media(
-                media=InputMediaPhoto(poster_url, caption=f"Is this the movie you are looking for?\n\n{formatted_info}"),
-                reply_markup=confirmation_keyboard
-            )
-        else:
-            await message.edit_text(
-                f"Is this the movie you are looking for?\n\n{formatted_info}",
-                reply_markup=confirmation_keyboard,
-                parse_mode=ParseMode.MARKDOWN, # FIXED
-                disable_web_page_preview=True
-            )
-        logger.info(f"User {user_id} selected TMDB ID {tmdb_id}, presented for confirmation with media/text.")
-    except Exception as e:
-        logger.error(f"Error editing message with TMDB info for user {user_id}: {e}")
-        await message.edit_text(
-            f"Is this the movie you are looking for?\n\n{formatted_info}\n\n"
-            "I couldn't display the poster. Please confirm manually.",
-            reply_markup=confirmation_keyboard,
-            parse_mode=ParseMode.MARKDOWN, # FIXED
-            disable_web_page_preview=True
-        )
-
-async def handle_none_correct_callback(client: Client, callback_query: CallbackQuery):
-    """Handles user indicating none of the TMDB results were correct."""
-    user_id = callback_query.from_user.id
-    message = callback_query.message
-    logger.info(f"User {user_id} chose 'None of these are correct'.")
-    await message.edit_text(
-        "Okay, if none of those were correct, please try a different /request with a more specific title."
-    )
-    await clear_user_state(user_id)
-
-async def handle_confirm_request_callback(client: Client, callback_query: CallbackQuery):
-    """Handles user confirming or rejecting their movie request."""
-    data = callback_query.data
-    user_id = callback_query.from_user.id
-    message = callback_query.message
-    chat_id = message.chat.id
-
-    logger.info(f"User {user_id} is confirming request: {data}")
-    state, state_data = await get_user_state(user_id)
-    if state != "awaiting_confirmation" or not state_data or "movie_data" not in state_data:
-        logger.warning(f"User {user_id} clicked old or invalid 'confirm_request' button. State: {state}")
-        await message.edit_text("This confirmation is no longer valid. Please start a new `/request`.")
-        await clear_user_state(user_id)
-        return
-
-    confirmed = data.split("_")[2] == "true"
-    movie_data = state_data["movie_data"]
-
-    await clear_user_state(user_id)
-    logger.info(f"User {user_id} cleared state after confirmation decision.")
-
-    if not confirmed:
-        logger.info(f"User {user_id} cancelled confirmation for {movie_data.get('title')}.")
-        await message.edit_text("Okay, let's try again. Please use `/request` with a different title.")
-        return
-
-    await message.edit_text("Thanks for confirming! Checking if already available...")
-    await client.send_chat_action(chat_id, ChatAction.TYPING)
-    logger.info(f"User {user_id} confirmed '{movie_data.get('title')}', checking internal index.")
-
-    # 1. Check if movie is already in the channel (via our database index)
-    found_movie_request = await search_channel_for_movie(
-        client, MOVIE_CHANNEL_ID, movie_data.get("id") # Pass TMDB ID
-    )
-
-    if found_movie_request:
-        # Movie found in our database index
-        channel_msg_id = found_movie_request["channel_message_id"]
-        movie_title = found_movie_request["tmdb_title"]
-        # Use the fulfilled_link if available from the DB for the Go To Movie button,
-        # otherwise generate a direct permalink if only channel_msg_id is present.
-        go_to_movie_url = found_movie_request.get("fulfilled_link") or f"https://t.me/{MOVIE_CHANNEL_ID.lstrip('@')}/{channel_msg_id}"
-
-
-        try:
-            # Copy the message from the channel to the user
-            await client.copy_message(
-                chat_id=user_id,
-                from_chat_id=MOVIE_CHANNEL_ID,
-                message_id=channel_msg_id
-            )
-            # Offer a button to go to the original message in the channel too
-            reply_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Go to Movie in Channel 🎬", url=go_to_movie_url)]
-            ])
-            await message.edit_text(
-                f"🎉 Great news! **{movie_title}** is already available. Here it is! Enjoy your movie. 🎬",
-                parse_mode=ParseMode.MARKDOWN, # FIXED
-                reply_markup=reply_keyboard
-            )
-            logger.info(f"User {user_id} requested '{movie_title}', found in DB index and sent from channel (Message ID: {channel_msg_id}).")
-        except Exception as e:
-            logger.error(f"Error copying found movie (ID {channel_msg_id}) to {user_id}: {e}", exc_info=True)
-            await message.edit_text(
-                "I found the movie in my index, but encountered an error sending it. "
-                "It might have been deleted from the channel, or an issue occurred. "
-                "Please try again later or contact support."
-            )
-        return # IMPORTANT: Add return here to stop further execution if movie is found
-    else:
-        # Movie not found in internal index, proceed to request admin
-        request_data = {
-            "user_id": user_id,
-            "user_name": callback_query.from_user.first_name,
-            "tmdb_id": movie_data.get("id"),
-            "tmdb_title": movie_data.get("title"),
-            "tmdb_overview": movie_data.get("overview"),
-            "tmdb_poster_path": movie_data.get("poster_path"),
-            "original_user_request_msg_id": message.id # Store message ID for later editing
-        }
-        request_id = await add_movie_request(request_data)
-
-        if not request_id:
-            logger.error(f"Failed to add movie request for user {user_id} and movie {movie_data.get('title')}.")
-            await message.edit_text("An error occurred while processing your request. Please try again.")
-            return
-
-        admin_message_caption = (
-            f"🎬 **New Movie Request** (ID: `{request_id}`)\n\n"
-            f"**From User:** [{callback_query.from_user.first_name}](tg://user?id={user_id})\n"
-            f"**Requested Movie:** `{movie_data.get('title')}`\n"
-            f"**Release Date:** `{movie_data.get('release_date', 'N/A')}`\n"
-            f"**Overview:** {movie_data.get('overview', 'No overview available.')}\n\n"
-            f"Please upload this movie to the channel."
-        )
-        admin_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Approve & Fulfill", callback_data=f"admin_approve_{request_id}")],
-            [InlineKeyboardButton("❌ Reject Request", callback_data=f"admin_reject_{request_id}")]
-        ])
-
-        poster_url = get_tmdb_image_url(movie_data.get("poster_path"))
-        try:
+        if tmdb_poster_path:
+            poster_url = f"https://image.tmdb.org/t/p/w500{tmdb_poster_path}"
             admin_msg = await client.send_photo(
                 chat_id=ADMIN_CHAT_ID,
-                photo=poster_url if poster_url else "https://via.placeholder.com/500x750?text=No+Poster",
-                caption=admin_message_caption,
-                parse_mode=ParseMode.MARKDOWN, # FIXED
-                reply_markup=admin_keyboard
+                photo=poster_url,
+                caption=admin_message_text,
+                reply_markup=admin_keyboard,
+                parse_mode=ParseMode.MARKDOWN
             )
-        except Exception as e:
-            logger.error(f"Error sending TMDB photo to admin {ADMIN_CHAT_ID}: {e}. Sending text message instead.")
+        else:
             admin_msg = await client.send_message(
                 chat_id=ADMIN_CHAT_ID,
-                text=admin_message_caption + "\n(Poster failed to load)",
-                parse_mode=ParseMode.MARKDOWN, # FIXED
+                text=admin_message_text,
                 reply_markup=admin_keyboard,
-                disable_web_page_preview=True
+                parse_mode=ParseMode.MARKDOWN
             )
+        # Update the admin_message_id in the database for this request
+        await client.get_db_connection().execute("UPDATE movie_requests SET admin_message_id = ? WHERE id = ?", (admin_msg.id, request_id))
+        await client.get_db_connection().commit()
+        logger.info(f"Request {request_id} forwarded to admin chat {ADMIN_CHAT_ID} with message ID {admin_msg.id}.")
 
-        await update_request_admin_message_id(request_id, admin_msg.id)
+    except Exception as e:
+        logger.error(f"Failed to forward request {request_id} to admin chat {ADMIN_CHAT_ID}: {e}", exc_info=True)
+        # If forwarding fails, perhaps update user that admin couldn't be notified
+        await message.reply_text("🚨 An error occurred while notifying the administrator. Please try again later.")
 
-        await message.edit_text(
-            f"⏳ Your request for **{movie_data.get('title')}** has been submitted! "
-            "It's not yet available in our channel. We've forwarded it to the admin "
-            "and will notify you once it's uploaded. Thank you for your patience! 🙏",
-            parse_mode=ParseMode.MARKDOWN # FIXED
-        )
-        logger.info(f"User {user_id} requested '{movie_data.get('title')}' (TMDB ID {movie_data.get('id')}), forwarded to admin (Request ID: {request_id}).")
+    await clear_user_state(user_id) # Clear user state after request is processed
     
