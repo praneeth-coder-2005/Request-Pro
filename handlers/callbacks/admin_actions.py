@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/handlers/callbacks/admin_actions.py
 # handlers/callbacks/admin_actions.py
 import logging
 from pyrogram import Client
