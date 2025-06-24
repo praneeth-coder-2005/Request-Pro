@@ -1,4 +1,4 @@
-%%writefile your_movie_bot/utils/database.py
+
 import aiosqlite
 import logging
 import json
