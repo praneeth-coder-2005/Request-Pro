@@ -166,4 +166,4 @@ async def update_movie_channel_id(request_id: int, channel_msg_id: int):
         await conn.commit()
         logger.info(f"Updated request {request_id} with channel_message_id: {channel_msg_id}")
     await conn.close()
-                                   
+        
