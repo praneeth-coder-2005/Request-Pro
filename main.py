@@ -1,78 +1,65 @@
+%%writefile your_movie_bot/main.py
 import asyncio
 import logging
 from pyrogram import Client
-from pyrogram.types import BotCommand, BotCommandScopeAllPrivateChats
+from loguru import logger as loguru_logger
 
-# Import your configuration variables
-from config import API_ID, API_HASH, BOT_TOKEN, ADMIN_CHAT_ID, MOVIE_CHANNEL_ID
-# Import your database initialization
+from config import API_ID, API_HASH, BOT_TOKEN, LOG_LEVEL, LOG_FILE
 from utils.database import init_db
+from handlers.start_handler import start_command
+from handlers.request_handler import request_command
+from handlers.callback_handler import handle_callback_query
+from handlers.admin_handler import admin_status_command # Example admin command
 
-# Basic logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# List of handler modules to import (Pyrogram will load these as plugins)
-HANDLER_MODULES = [
-    "handlers.start_handler",
-    "handlers.help_handler",
-    "handlers.request_handler",
-    "handlers.callback_handler",
-    "handlers.admin_handler",
-    # Make sure all your handler files (start_handler.py, help_handler.py, etc.)
-    # are present in the 'handlers' folder and are named correctly.
-]
-
-async def set_bot_commands(client: Client):
-    """Sets the bot's commands for a better user experience."""
-    commands = [
-        BotCommand("start", "Start the bot and get a welcome message"),
-        BotCommand("help", "Get information about available commands"),
-        BotCommand("request", "Request a movie not available in the channel"),
-        BotCommand("myrequests", "View your pending movie requests"),
-    ]
-    # Set commands for private chats only
-    await client.set_bot_commands(commands, scope=BotCommandScopeAllPrivateChats())
-    logger.info("Bot commands set successfully.")
+# Configure Loguru to handle logging
+loguru_logger.add(
+    LOG_FILE,
+    rotation="10 MB",
+    level=LOG_LEVEL,
+    format="{time} {level} {message}",
+    serialize=False # Set to True if you want JSON logs
+)
+logging.basicConfig(level=LOG_LEVEL) # Basic config for pyrogram's internal logging
+logger = logging.getLogger(__name__) # Use standard logging for this file
 
 async def main():
-    """
-    Main function to initialize and run the bot.
-    """
-    # Initialize the Pyrogram Client
+    """Initializes the bot and starts polling."""
+    logger.info("Starting bot initialization...")
+
+    # Initialize the database
+    await init_db()
+    logger.info("Database initialized.")
+
+    # Create Pyrogram Client instance
     app = Client(
-        "movie_request_bot",  # This name is used for the .session file
+        "movie_request_bot",
         api_id=API_ID,
         api_hash=API_HASH,
         bot_token=BOT_TOKEN,
-        plugins=dict(root="handlers") # This tells Pyrogram to load all .py files in the 'handlers' directory
+        workers=10 # Adjust as needed
     )
+    logger.info("Pyrogram client created.")
 
-    logger.info("Starting bot...")
+    # Add handlers
+    app.add_handler(start_command)
+    app.add_handler(request_command)
+    app.add_handler(handle_callback_query)
+    app.add_handler(admin_status_command) # Add your admin command handler
 
-    # Initialize the database (create tables if they don't exist)
-    await init_db()
+    logger.info("Handlers added. Bot starting...")
 
-    # Start the Pyrogram client
-    async with app:
-        logger.info("Bot client initialized. Setting bot commands...")
-        await set_bot_commands(app) # Set the commands in Telegram
-        logger.info("Bot started! Press Ctrl+C to stop.")
+    # Start the client
+    await app.start()
+    logger.info("Bot started successfully!")
 
-        # This loop keeps the bot running indefinitely while listening for updates.
-        # Pyrogram's event loop will handle incoming messages and callbacks.
-        # It replaces the deprecated app.idle() for Pyrogram 2.x
-        while True:
-            await asyncio.sleep(1) # Sleep briefly to prevent busy-waiting and allow event loop to process
-
-    # This part of the code below will only be reached if the bot process is explicitly stopped
-    logger.info("Bot stopped.")
+    # Keep the bot running
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user.")
+        logger.info("Bot stopped by KeyboardInterrupt.")
     except Exception as e:
-        logger.exception(f"An unexpected error occurred: {e}")
+        logger.error(f"Bot encountered a critical error: {e}", exc_info=True)
 
