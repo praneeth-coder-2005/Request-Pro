@@ -1,7 +1,7 @@
 # handlers/admin_handler.py
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ChatAction, MessageMediaType
+from pyrogram.enums import ChatAction, MessageMediaType, ParseMode # ADDED ParseMode here
 import logging
 
 from utils.database import get_user_state, clear_user_state, get_request_by_id, update_request_status, update_movie_channel_id
@@ -81,21 +81,21 @@ async def handle_admin_upload_reply(client: Client, message: Message):
                         chat_id=MOVIE_CHANNEL_ID,
                         photo=media,
                         caption=channel_caption,
-                        parse_mode="markdown"
+                        parse_mode=ParseMode.MARKDOWN # FIXED
                     )
                 elif media_type == MessageMediaType.VIDEO:
                     channel_message = await client.send_video(
                         chat_id=MOVIE_CHANNEL_ID,
                         video=media,
                         caption=channel_caption,
-                        parse_mode="markdown"
+                        parse_mode=ParseMode.MARKDOWN # FIXED
                     )
                 elif media_type == MessageMediaType.DOCUMENT:
                     channel_message = await client.send_document(
                         chat_id=MOVIE_CHANNEL_ID,
                         document=media,
                         caption=channel_caption,
-                        parse_mode="markdown"
+                        parse_mode=ParseMode.MARKDOWN # FIXED
                     )
 
                 if channel_message:
@@ -111,7 +111,7 @@ async def handle_admin_upload_reply(client: Client, message: Message):
                 # Admin sent a URL
                 fulfilled_link = message.text.strip()
                 logger.info(f"Admin {user_id} sent a URL for request {request_id}: {fulfilled_link}.")
-                
+
                 # Post the URL to the channel with movie info
                 channel_message = await client.send_message(
                     chat_id=MOVIE_CHANNEL_ID,
@@ -120,7 +120,7 @@ async def handle_admin_upload_reply(client: Client, message: Message):
                          f"📝 **Overview:** {movie_overview_for_channel}\n\n"
                          f"✨ Requested by user: [{request_data.get('user_name')}](tg://user?id={request_data.get('user_id')})"
                          f"\n\n#Movie #Request", # Example hashtags
-                    parse_mode="markdown",
+                    parse_mode=ParseMode.MARKDOWN, # FIXED
                     disable_web_page_preview=False # Let Telegram show preview for URLs
                 )
                 if channel_message:
@@ -170,7 +170,7 @@ async def handle_admin_upload_reply(client: Client, message: Message):
                             chat_id=user_id_to_notify,
                             message_id=user_msg_id,
                             text=final_user_message_text,
-                            parse_mode="markdown",
+                            parse_mode=ParseMode.MARKDOWN, # FIXED
                             reply_markup=reply_keyboard
                         )
                     except Exception as e:
@@ -178,14 +178,14 @@ async def handle_admin_upload_reply(client: Client, message: Message):
                         await client.send_message(
                             chat_id=user_id_to_notify,
                             text=final_user_message_text,
-                            parse_mode="markdown",
+                            parse_mode=ParseMode.MARKDOWN, # FIXED
                             reply_markup=reply_keyboard
                         )
                 else: # If original message ID wasn't stored or is null
                     await client.send_message(
                         chat_id=user_id_to_notify,
                         text=final_user_message_text,
-                        parse_mode="markdown",
+                        parse_mode=ParseMode.MARKDOWN, # FIXED
                         reply_markup=reply_keyboard
                     )
 
@@ -204,7 +204,7 @@ async def handle_admin_upload_reply(client: Client, message: Message):
                                     f"\n\n✅ **FULFILLED & INDEXED!**\n"
                                     f"Channel Message ID: `{channel_msg_id}`\n"
                                     f"Link: [Click Here]({go_to_movie_url})",
-                            parse_mode="markdown",
+                            parse_mode=ParseMode.MARKDOWN, # FIXED
                             reply_markup=None # Remove all buttons
                         )
                     except Exception as e:
@@ -229,4 +229,4 @@ async def handle_admin_upload_reply(client: Client, message: Message):
         # 3. Check for other admin commands if any
         # For now, we'll just ignore if it's not a relevant state.
         pass
-    
+                
