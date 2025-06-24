@@ -7,7 +7,7 @@ import logging
 
 # Import your own utility and config files
 from utils.tmdb_api import get_movie_details_tmdb, get_tmdb_image_url
-from utils.database import get_user_state, clear_user_state, add_movie_request, update_request_status, get_request_by_id, update_request_admin_message_id
+from utils.database import get_user_state, clear_user_state, set_user_state, add_movie_request, update_request_status, get_request_by_id, update_request_admin_message_id
 from utils.helpers import search_channel_for_movie, clean_movie_title, format_movie_info
 from config import MOVIE_CHANNEL_ID, ADMIN_CHAT_ID
 
