@@ -1,58 +1,71 @@
-# handlers/request_handler.py
+%%writefile your_movie_bot/handlers/request_handler.py
+import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
-from pyrogram.enums import ChatAction, ParseMode # ADDED ParseMode here
-import logging
 
-from utils.tmdb_api import search_movies_tmdb, get_tmdb_image_url # Changed search_tmdb_movies to search_movies_tmdb
-from utils.database import set_user_state, clear_user_state, get_user_state
-from utils.helpers import format_movie_info
+from utils.tmdb_api import search_movie_tmdb
+from utils.database import set_user_state, clear_user_state, add_movie_request
+from config import ADMIN_CHAT_ID, BOT_NAME # Import BOT_NAME for messages
 
 logger = logging.getLogger(__name__)
 
 @Client.on_message(filters.command("request") & filters.private)
-async def handle_movie_request_command(client: Client, message: Message):
+async def request_command(client: Client, message: Message):
+    """
+    Handles the /request command, searches TMDB, and presents results to the user.
+    """
     user_id = message.from_user.id
-    query = message.text.split(" ", 1)
+    movie_name = message.text.replace("/request", "").strip()
 
-    if len(query) < 2:
-        await message.reply_text("Please provide a movie title to search for. Example: `/request The Matrix`")
+    if not movie_name:
+        await message.reply_text("Please provide a movie name after the /request command. Example: `/request Inception`")
         await clear_user_state(user_id)
         return
 
-    movie_title = query[1].strip()
-    logger.info(f"User {user_id} requested: '{movie_title}'")
+    await message.reply_text(f"Searching for '{movie_name}' on TMDB... 🎬")
+    logger.info(f"User {user_id} requested movie: {movie_name}")
 
-    await client.send_chat_action(message.chat.id, ChatAction.TYPING)
-    tmdb_results = await search_movies_tmdb(movie_title)
-    if not tmdb_results:
-        await message.reply_text("No results found. Please try a different query.", parse_mode=ParseMode.MARKDOWN) # FIXED
-        await clear_user_state(user_id)
-        return
+    search_results = await search_movie_tmdb(movie_name)
 
-    # Store TMDB results in user state for callback handling
-    await set_user_state(user_id, "awaiting_tmdb_selection", {"tmdb_results": tmdb_results, "original_query": movie_title})
-    logger.info(f"User {user_id} saved state 'awaiting_tmdb_selection'.")
-
-    keyboard_buttons = []
-    response_text = "Here are a few movies I found. Please select the correct one:\n\n"
-
-    for i, movie in enumerate(tmdb_results[:5]): # Limit to top 5 results for brevity
-        title = movie.get("title", "N/A")
-        release_date = movie.get("release_date", "N/A")
-        response_text += f"**{i+1}. {title}** ({release_date[:4] if release_date != 'N/A' else 'N/A'})\n"
-        keyboard_buttons.append(
-            [InlineKeyboardButton(f"{i+1}. {title} ({release_date[:4] if release_date != 'N/A' else 'N/A'})", callback_data=f"select_tmdb_{i}")]
+    if not search_results:
+        await message.reply_text(
+            "Sorry, I couldn't find any movies matching that name on TMDB. "
+            "Please try a different spelling or a more specific title."
         )
+        await clear_user_state(user_id)
+        logger.info(f"No TMDB results found for '{movie_name}' for user {user_id}.")
+        return
 
-    keyboard_buttons.append([InlineKeyboardButton("None of these are correct", callback_data="tmdb_none_correct")])
+    # Store search results temporarily in user's state
+    # Only store necessary data to avoid large state objects
+    user_search_data = {
+        "query": movie_name,
+        "results": [
+            {"id": m["id"], "title": m["title"], "release_date": m["release_date"], "poster_path": m["poster_path"]}
+            for m in search_results[:5] # Limit to top 5 results for brevity
+        ]
+    }
+    await set_user_state(user_id, "awaiting_tmdb_selection", user_search_data)
+    logger.debug(f"User {user_id} state set to 'awaiting_tmdb_selection'.")
 
-    reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+    keyboard = []
+    response_text = "I found these movies. Please select the correct one:\n\n"
 
-    try:
-        await message.reply_text(response_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN) # FIXED
-        logger.info(f"User {user_id} searched for '{movie_title}', presented TMDB options.")
-    except Exception as e:
-        logger.error(f"Error sending TMDB search results to user {user_id}: {e}", exc_info=True)
-        await message.reply_text("An error occurred while displaying search results. Please try again.")
+    for i, movie in enumerate(search_results[:5]): # Show up to 5 results
+        title = movie.get("title", "N/A")
+        year = movie.get("release_date", "N/A").split("-")[0]
+        movie_id = movie.get("id")
+
+        response_text += f"**{i+1}. {title}** ({year})\n"
+        keyboard.append([InlineKeyboardButton(f"{i+1}. {title} ({year})", callback_data=f"select_tmdb_{movie_id}")])
+
+    keyboard.append([InlineKeyboardButton("None of these are correct", callback_data="tmdb_none_correct")])
+
+    await message.reply_text(
+        response_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    # Store the message ID so we can edit it later if user confirms
+    await set_user_state(user_id, "awaiting_tmdb_selection", {**user_search_data, "message_id": message.id + 1}) # +1 because reply_text creates a new message
 
