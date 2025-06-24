@@ -2,11 +2,11 @@
 import logging
 from pyrogram import Client
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from pyrogram.enums import ChatAction
+from pyrogram.enums import ChatAction, ParseMode # ADDED ParseMode here
 
 from utils.tmdb_api import get_movie_details_tmdb, get_tmdb_image_url
-from utils.database import get_user_state, clear_user_state, set_user_state, add_movie_request, get_request_by_tmdb_id, update_request_status # Ensure all needed imports
-from utils.helpers import search_channel_for_movie, clean_movie_title, format_movie_info
+from utils.database import get_user_state, clear_user_state, set_user_state, add_movie_request, update_request_status, get_request_by_tmdb_id, update_request_admin_message_id
+from utils.helpers import search_channel_for_movie, format_movie_info
 from config import ADMIN_CHAT_ID, MOVIE_CHANNEL_ID # Include ADMIN_CHAT_ID here
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ async def handle_select_tmdb_callback(client: Client, callback_query: CallbackQu
             await message.edit_text(
                 f"Is this the movie you are looking for?\n\n{formatted_info}",
                 reply_markup=confirmation_keyboard,
-                parse_mode="markdown",
+                parse_mode=ParseMode.MARKDOWN, # FIXED
                 disable_web_page_preview=True
             )
         logger.info(f"User {user_id} selected TMDB ID {tmdb_id}, presented for confirmation with media/text.")
@@ -79,7 +79,7 @@ async def handle_select_tmdb_callback(client: Client, callback_query: CallbackQu
             f"Is this the movie you are looking for?\n\n{formatted_info}\n\n"
             "I couldn't display the poster. Please confirm manually.",
             reply_markup=confirmation_keyboard,
-            parse_mode="markdown",
+            parse_mode=ParseMode.MARKDOWN, # FIXED
             disable_web_page_preview=True
         )
 
@@ -123,35 +123,47 @@ async def handle_confirm_request_callback(client: Client, callback_query: Callba
     await client.send_chat_action(chat_id, ChatAction.TYPING)
     logger.info(f"User {user_id} confirmed '{movie_data.get('title')}', checking internal index.")
 
+    # 1. Check if movie is already in the channel (via our database index)
     found_movie_request = await search_channel_for_movie(
-        client, MOVIE_CHANNEL_ID, movie_data.get("id")
+        client, MOVIE_CHANNEL_ID, movie_data.get("id") # Pass TMDB ID
     )
 
     if found_movie_request:
+        # Movie found in our database index
         channel_msg_id = found_movie_request["channel_message_id"]
         movie_title = found_movie_request["tmdb_title"]
-        fulfilled_link = found_movie_request.get("fulfilled_link") # Get the fulfilled link if any
+        # Use the fulfilled_link if available from the DB for the Go To Movie button,
+        # otherwise generate a direct permalink if only channel_msg_id is present.
+        go_to_movie_url = found_movie_request.get("fulfilled_link") or f"https://t.me/{MOVIE_CHANNEL_ID.lstrip('@')}/{channel_msg_id}"
+
 
         try:
+            # Copy the message from the channel to the user
             await client.copy_message(
                 chat_id=user_id,
                 from_chat_id=MOVIE_CHANNEL_ID,
                 message_id=channel_msg_id
             )
+            # Offer a button to go to the original message in the channel too
+            reply_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Go to Movie in Channel 🎬", url=go_to_movie_url)]
+            ])
             await message.edit_text(
                 f"🎉 Great news! **{movie_title}** is already available. Here it is! Enjoy your movie. 🎬",
-                parse_mode="markdown"
+                parse_mode=ParseMode.MARKDOWN, # FIXED
+                reply_markup=reply_keyboard
             )
             logger.info(f"User {user_id} requested '{movie_title}', found in DB index and sent from channel (Message ID: {channel_msg_id}).")
         except Exception as e:
-            logger.error(f"Error copying found movie (ID {channel_msg_id}) to {user_id}: {e}")
+            logger.error(f"Error copying found movie (ID {channel_msg_id}) to {user_id}: {e}", exc_info=True)
             await message.edit_text(
-                "I found the movie, but encountered an error sending it. "
+                "I found the movie in my index, but encountered an error sending it. "
                 "It might have been deleted from the channel, or an issue occurred. "
                 "Please try again later or contact support."
             )
-        return
+        return # IMPORTANT: Add return here to stop further execution if movie is found
     else:
+        # Movie not found in internal index, proceed to request admin
         request_data = {
             "user_id": user_id,
             "user_name": callback_query.from_user.first_name,
@@ -159,7 +171,7 @@ async def handle_confirm_request_callback(client: Client, callback_query: Callba
             "tmdb_title": movie_data.get("title"),
             "tmdb_overview": movie_data.get("overview"),
             "tmdb_poster_path": movie_data.get("poster_path"),
-            "original_user_request_msg_id": message.id
+            "original_user_request_msg_id": message.id # Store message ID for later editing
         }
         request_id = await add_movie_request(request_data)
 
@@ -187,7 +199,7 @@ async def handle_confirm_request_callback(client: Client, callback_query: Callba
                 chat_id=ADMIN_CHAT_ID,
                 photo=poster_url if poster_url else "https://via.placeholder.com/500x750?text=No+Poster",
                 caption=admin_message_caption,
-                parse_mode="markdown",
+                parse_mode=ParseMode.MARKDOWN, # FIXED
                 reply_markup=admin_keyboard
             )
         except Exception as e:
@@ -195,7 +207,7 @@ async def handle_confirm_request_callback(client: Client, callback_query: Callba
             admin_msg = await client.send_message(
                 chat_id=ADMIN_CHAT_ID,
                 text=admin_message_caption + "\n(Poster failed to load)",
-                parse_mode="markdown",
+                parse_mode=ParseMode.MARKDOWN, # FIXED
                 reply_markup=admin_keyboard,
                 disable_web_page_preview=True
             )
@@ -206,7 +218,7 @@ async def handle_confirm_request_callback(client: Client, callback_query: Callba
             f"⏳ Your request for **{movie_data.get('title')}** has been submitted! "
             "It's not yet available in our channel. We've forwarded it to the admin "
             "and will notify you once it's uploaded. Thank you for your patience! 🙏",
-            parse_mode="markdown"
+            parse_mode=ParseMode.MARKDOWN # FIXED
         )
         logger.info(f"User {user_id} requested '{movie_data.get('title')}' (TMDB ID {movie_data.get('id')}), forwarded to admin (Request ID: {request_id}).")
-  
+    
