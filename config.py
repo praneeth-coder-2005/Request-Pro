@@ -16,3 +16,8 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 
 # Base URL for TMDB image
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500" # w500 is a good size
+# ... other imports
+# Logging Configuration
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper() # INFO, DEBUG, WARNING, ERROR, CRITICAL
+LOG_FILE = os.getenv("LOG_FILE", "bot.log")
+# ... rest of your config.py
