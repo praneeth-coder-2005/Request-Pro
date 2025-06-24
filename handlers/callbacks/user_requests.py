@@ -7,7 +7,7 @@ from pyrogram.enums import ChatAction
 from utils.tmdb_api import get_movie_details_tmdb, get_tmdb_image_url
 from utils.database import get_user_state, clear_user_state, set_user_state, add_movie_request, get_request_by_tmdb_id, update_request_status # Ensure all needed imports
 from utils.helpers import search_channel_for_movie, clean_movie_title, format_movie_info
-from config import MOVIE_CHANNEL_ID # Only MOVIE_CHANNEL_ID needed here
+from config import ADMIN_CHAT_ID, MOVIE_CHANNEL_ID # Include ADMIN_CHAT_ID here
 
 logger = logging.getLogger(__name__)
 
