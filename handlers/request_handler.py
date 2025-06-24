@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/handlers/request_handler.py
 import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
