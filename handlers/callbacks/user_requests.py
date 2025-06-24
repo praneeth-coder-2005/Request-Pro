@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/handlers/callbacks/user_requests.py
 import logging
 from pyrogram import Client
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
