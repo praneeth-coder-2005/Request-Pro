@@ -1,4 +1,5 @@
 # main.py
+
 import asyncio
 import logging
 from pyrogram import Client
@@ -15,8 +16,8 @@ HANDLER_MODULES = [
     "handlers.start_handler",
     "handlers.help_handler",
     "handlers.request_handler",
-    "handlers.callback_handler", # Add new callback handler
-    "handlers.admin_handler",     # Add new admin handler
+    "handlers.callback_handler",
+    "handlers.admin_handler",
 ]
 
 async def set_bot_commands(client: Client):
@@ -27,7 +28,6 @@ async def set_bot_commands(client: Client):
         BotCommand("request", "Request a movie not available in the channel"),
         BotCommand("myrequests", "View your pending movie requests"),
     ]
-    # Set commands for private chats
     await client.set_bot_commands(commands, scope=BotCommandScopeAllPrivateChats())
     logger.info("Bot commands set successfully.")
 
@@ -36,27 +36,39 @@ async def main():
     Main function to initialize and run the bot.
     """
     app = Client(
-        "movie_request_bot",
+        "movie_request_bot", # Name for your session file
         api_id=API_ID,
         api_hash=API_HASH,
         bot_token=BOT_TOKEN,
-        plugins=dict(root="handlers")
+        plugins=dict(root="handlers") # Pyrogram's way to load handlers from a directory
     )
 
     logger.info("Starting bot...")
 
     await init_db()
 
-        async with app:
+    async with app:
         logger.info("Bot client initialized. Setting bot commands...")
         await set_bot_commands(app)
         logger.info("Bot started! Press Ctrl+C to stop.")
-        # The bot will now stay running within the 'async with app:' block
-        # until the Colab cell is stopped or an external interruption occurs.
-        # Remove the 'await app.idle()' line.
-        # You can add a simple infinite loop or just let it run.
-        # For Colab, often the simple 'async with app:' block is sufficient.
+        # The bot will remain active as long as the 'async with app:' block is running.
+        # Pyrogram handles the event loop internally within this context.
+        # You no longer need app.idle() here.
+        # To prevent the script from exiting immediately, especially in environments
+        # like Colab where you expect it to stay active for a long time,
+        # you can add a simple infinite loop with a sleep.
         while True:
-            await asyncio.sleep(1) # Keep the event loop alive and responsive
-        # The following line will only be reached if the loop breaks or the app stops externally
-        # logger.info("Bot stopped.") # This line is often unreachable in practice with idle bots
+            await asyncio.sleep(1) # Keep the event loop from blocking and allow other tasks to run
+
+    # This part might not be reached in Colab unless you explicitly stop the cell.
+    logger.info("Bot stopped.")
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user.")
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred: {e}")
+    
