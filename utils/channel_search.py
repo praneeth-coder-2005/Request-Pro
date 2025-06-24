@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/utils/channel_search.py
 import logging
 from pyrogram import Client
 import re
