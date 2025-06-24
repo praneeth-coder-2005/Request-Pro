@@ -1,114 +1,93 @@
-import aiosqlite
-import logging
-import json
-import time
+import asyncio
+import datetime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 from config import DATABASE_URL, STATE_TIMEOUT_SECONDS
+from loguru import logger as loguru_logger
 
-logger = logging.getLogger(__name__)
+Base = declarative_base()
 
-# Extract path from DATABASE_URL for aiosqlite
-DB_FILE = DATABASE_URL.replace("sqlite:///", "")
+# Define UserState model
+class UserState(Base):
+    __tablename__ = "user_states"
+    user_id = Column(Integer, primary_key=True)
+    state = Column(String)
+    data = Column(String)  # Store JSON string of additional state data
+    last_update = Column(DateTime, default=datetime.datetime.now)
+
+    def __repr__(self):
+        return f"<UserState(user_id={self.user_id}, state='{self.state}', last_update='{self.last_update}')>"
+
+# Use AsyncEngine for async database operations
+engine = create_async_engine(DATABASE_URL, echo=False)
+AsyncSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    class_=AsyncSession
+)
 
 async def init_db():
-    """Initializes the SQLite database and creates tables if they don't exist."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS movie_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                user_name TEXT,
-                tmdb_id INTEGER,
-                tmdb_title TEXT,
-                tmdb_poster_path TEXT,
-                status TEXT NOT NULL DEFAULT 'pending', -- pending, approved, approved_no_file_found, fulfilled, rejected
-                request_timestamp INTEGER NOT NULL,
-                fulfilled_timestamp INTEGER,
-                fulfilled_link TEXT,
-                channel_message_id INTEGER, -- New: to store the ID of the message in the movie channel
-                admin_message_id INTEGER -- New: to store the ID of the admin's forwarded message
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS user_states (
-                user_id INTEGER PRIMARY KEY,
-                state TEXT NOT NULL,
-                data TEXT,
-                timestamp INTEGER NOT NULL
-            )
-        """)
-        await db.commit()
-    logger.info(f"Database {DB_FILE} initialized successfully.")
-
-async def add_movie_request(user_id: int, user_name: str, tmdb_id: int, tmdb_title: str, tmdb_poster_path: str = None, admin_message_id: int = None):
-    """Adds a new movie request to the database."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        cursor = await db.execute(
-            "INSERT INTO movie_requests (user_id, user_name, tmdb_id, tmdb_title, tmdb_poster_path, request_timestamp, admin_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, user_name, tmdb_id, tmdb_title, tmdb_poster_path, int(time.time()), admin_message_id)
-        )
-        await db.commit()
-        return cursor.lastrowid
-
-async def get_request_by_id(request_id: int):
-    """Retrieves a movie request by its ID."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM movie_requests WHERE id = ?", (request_id,))
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-
-async def update_request_status(request_id: int, status: str, fulfilled_link: str = None):
-    """Updates the status of a movie request."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        current_time = int(time.time()) if status == "fulfilled" else None
-        await db.execute(
-            "UPDATE movie_requests SET status = ?, fulfilled_timestamp = ?, fulfilled_link = ? WHERE id = ?",
-            (status, current_time, fulfilled_link, request_id)
-        )
-        await db.commit()
-        logger.info(f"Request {request_id} status updated to {status}.")
-
-async def update_movie_channel_id(request_id: int, channel_message_id: int):
-    """Updates the channel_message_id for a fulfilled request."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute(
-            "UPDATE movie_requests SET channel_message_id = ? WHERE id = ?",
-            (channel_message_id, request_id)
-        )
-        await db.commit()
-        logger.info(f"Request {request_id} channel_message_id updated to {channel_message_id}.")
-
+    """Initializes the database, creating tables if they don't exist."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    loguru_logger.info("Database initialized.")
 
 async def set_user_state(user_id: int, state: str, data: dict = None):
     """Sets or updates the state and associated data for a user."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        json_data = json.dumps(data) if data else None
-        current_time = int(time.time())
-        await db.execute(
-            "INSERT OR REPLACE INTO user_states (user_id, state, data, timestamp) VALUES (?, ?, ?, ?)",
-            (user_id, state, json_data, current_time)
-        )
-        await db.commit()
-        logger.debug(f"User {user_id} state set to '{state}' with data: {data}")
+    async with AsyncSessionLocal() as session:
+        user_state = await session.get(UserState, user_id)
+        if user_state:
+            user_state.state = state
+            user_state.data = str(data) if data else None
+            user_state.last_update = datetime.datetime.now()
+        else:
+            user_state = UserState(user_id=user_id, state=state, data=str(data) if data else None)
+            session.add(user_state)
+        await session.commit()
+        await session.refresh(user_state)
+        loguru_logger.debug(f"User {user_id} state set to: {state}")
+        return user_state
 
 async def get_user_state(user_id: int):
-    """Retrieves the current state and data for a user, clearing if expired."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM user_states WHERE user_id = ?", (user_id,))
-        row = await cursor.fetchone()
-        if row:
-            if int(time.time()) - row['timestamp'] > STATE_TIMEOUT_SECONDS:
-                await clear_user_state(user_id)
-                logger.debug(f"User {user_id} state expired and cleared.")
-                return None, None # State expired
-            return row['state'], json.loads(row['data']) if row['data'] else {}
+    """Retrieves the current state and data for a user."""
+    async with AsyncSessionLocal() as session:
+        user_state = await session.get(UserState, user_id)
+        if user_state and (datetime.datetime.now() - user_state.last_update).total_seconds() > STATE_TIMEOUT_SECONDS:
+            loguru_logger.debug(f"User {user_id} state expired. Clearing.")
+            await clear_user_state(user_id)
+            return None, None # Return None if expired
+        if user_state:
+            data = eval(user_state.data) if user_state.data else {} # Safely evaluate string to dict
+            return user_state.state, data
         return None, None
 
 async def clear_user_state(user_id: int):
     """Clears the state for a specific user."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("DELETE FROM user_states WHERE user_id = ?", (user_id,))
-        await db.commit()
-        logger.debug(f"User {user_id} state cleared.")
+    async with AsyncSessionLocal() as session:
+        user_state = await session.get(UserState, user_id)
+        if user_state:
+            await session.delete(user_state)
+            await session.commit()
+            loguru_logger.debug(f"User {user_id} state cleared.")
+
+async def clear_all_expired_states():
+    """Periodically clears expired user states from the database."""
+    while True:
+        await asyncio.sleep(STATE_TIMEOUT_SECONDS) # Check every STATE_TIMEOUT_SECONDS
+        async with AsyncSessionLocal() as session: # Use AsyncSessionLocal
+            try:
+                # Calculate cutoff time once
+                cutoff_time = datetime.datetime.now() - datetime.timedelta(seconds=STATE_TIMEOUT_SECONDS)
+
+                # Delete states older than cutoff_time
+                result = await session.execute(
+                    text("DELETE FROM user_states WHERE last_update < :cutoff_time"),
+                    {"cutoff_time": cutoff_time}
+                )
+                await session.commit()
+                loguru_logger.info(f"Cleared {result.rowcount} expired user states.")
+            except Exception as e:
+                loguru_logger.error(f"Error clearing expired states: {e}", exc_info=True)
 
