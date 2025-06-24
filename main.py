@@ -1,23 +1,26 @@
-# main.py
-
 import asyncio
 import logging
 from pyrogram import Client
 from pyrogram.types import BotCommand, BotCommandScopeAllPrivateChats
 
+# Import your configuration variables
 from config import API_ID, API_HASH, BOT_TOKEN, ADMIN_CHAT_ID, MOVIE_CHANNEL_ID
+# Import your database initialization
 from utils.database import init_db
 
+# Basic logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# List of handler modules to import
+# List of handler modules to import (Pyrogram will load these as plugins)
 HANDLER_MODULES = [
     "handlers.start_handler",
     "handlers.help_handler",
     "handlers.request_handler",
     "handlers.callback_handler",
     "handlers.admin_handler",
+    # Make sure all your handler files (start_handler.py, help_handler.py, etc.)
+    # are present in the 'handlers' folder and are named correctly.
 ]
 
 async def set_bot_commands(client: Client):
@@ -28,6 +31,7 @@ async def set_bot_commands(client: Client):
         BotCommand("request", "Request a movie not available in the channel"),
         BotCommand("myrequests", "View your pending movie requests"),
     ]
+    # Set commands for private chats only
     await client.set_bot_commands(commands, scope=BotCommandScopeAllPrivateChats())
     logger.info("Bot commands set successfully.")
 
@@ -35,34 +39,34 @@ async def main():
     """
     Main function to initialize and run the bot.
     """
+    # Initialize the Pyrogram Client
     app = Client(
-        "movie_request_bot", # Name for your session file
+        "movie_request_bot",  # This name is used for the .session file
         api_id=API_ID,
         api_hash=API_HASH,
         bot_token=BOT_TOKEN,
-        plugins=dict(root="handlers") # Pyrogram's way to load handlers from a directory
+        plugins=dict(root="handlers") # This tells Pyrogram to load all .py files in the 'handlers' directory
     )
 
     logger.info("Starting bot...")
 
+    # Initialize the database (create tables if they don't exist)
     await init_db()
 
+    # Start the Pyrogram client
     async with app:
         logger.info("Bot client initialized. Setting bot commands...")
-        await set_bot_commands(app)
+        await set_bot_commands(app) # Set the commands in Telegram
         logger.info("Bot started! Press Ctrl+C to stop.")
-        # The bot will remain active as long as the 'async with app:' block is running.
-        # Pyrogram handles the event loop internally within this context.
-        # You no longer need app.idle() here.
-        # To prevent the script from exiting immediately, especially in environments
-        # like Colab where you expect it to stay active for a long time,
-        # you can add a simple infinite loop with a sleep.
+
+        # This loop keeps the bot running indefinitely while listening for updates.
+        # Pyrogram's event loop will handle incoming messages and callbacks.
+        # It replaces the deprecated app.idle() for Pyrogram 2.x
         while True:
-            await asyncio.sleep(1) # Keep the event loop from blocking and allow other tasks to run
+            await asyncio.sleep(1) # Sleep briefly to prevent busy-waiting and allow event loop to process
 
-    # This part might not be reached in Colab unless you explicitly stop the cell.
+    # This part of the code below will only be reached if the bot process is explicitly stopped
     logger.info("Bot stopped.")
-
 
 if __name__ == "__main__":
     try:
@@ -71,4 +75,4 @@ if __name__ == "__main__":
         logger.info("Bot stopped by user.")
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
-    
+
