@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/main.py
 import asyncio
 import logging
 from pyrogram import Client
