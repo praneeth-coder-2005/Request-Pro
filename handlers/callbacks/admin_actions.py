@@ -2,6 +2,7 @@
 import logging
 from pyrogram import Client
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.enums import ParseMode # ADDED ParseMode here
 from utils.database import get_request_by_id, update_request_status, set_user_state, clear_user_state
 from config import ADMIN_CHAT_ID # Only ADMIN_CHAT_ID needed here
 
@@ -34,7 +35,7 @@ async def handle_admin_approve_callback(client: Client, callback_query: Callback
         caption=message.caption + "\n\n✅ **Approved by Admin.**\n\n"
                 "**Please REPLY to this message with the movie file(s) or a direct download link.** "
                 "I will upload it to the channel and index it automatically.",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN # FIXED
     )
     logger.info(f"Admin approved request {request_id}. Prompted for file/URL upload.")
 
@@ -53,14 +54,14 @@ async def handle_admin_reject_callback(client: Client, callback_query: CallbackQ
     await message.edit_reply_markup(reply_markup=None)
     await message.edit_caption(
         caption=message.caption + "\n\n❌ **Request Rejected by Admin.**",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN # FIXED
     )
     try:
         await client.send_message(
             chat_id=request_data["user_id"],
             text=f"🙁 We're sorry, your request for **{request_data['tmdb_title']}** could not be fulfilled at this time. "
                  "Please try again later or request a different movie.",
-            parse_mode="markdown"
+            parse_mode=ParseMode.MARKDOWN # FIXED
         )
     except Exception as e:
         logger.warning(f"Failed to notify user {request_data['user_id']} about rejected request {request_id}: {e}")
