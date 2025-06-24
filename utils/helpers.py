@@ -11,7 +11,7 @@ async def search_channel_for_movie(client: Client, channel_id: str, tmdb_id: int
     Bots cannot directly search Telegram channel messages.
     """
     logger.info(f"Checking internal database for fulfilled movie with TMDB ID: {tmdb_id}")
-    
+
     # Search the database for any request with this TMDB ID that has been fulfilled
     # and has a channel_message_id.
     movie_request_data = await get_request_by_tmdb_id(tmdb_id)
@@ -52,4 +52,3 @@ def get_tmdb_image_url(poster_path: str, size: str = "w500") -> str:
     if poster_path:
         return f"https://image.tmdb.org/t/p/{size}{poster_path}"
     return "https://via.placeholder.com/500x750?text=No+Poster" # Placeholder image
-    
