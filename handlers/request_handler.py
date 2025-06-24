@@ -1,6 +1,7 @@
 # handlers/request_handler.py
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ChatAction
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from pyrogram.enums import ChatAction # <-- Correct import for ChatAction
 import asyncio
 import logging
 
