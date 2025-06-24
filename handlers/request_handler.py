@@ -4,7 +4,7 @@ from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.enums import ChatAction, ParseMode # ADDED ParseMode here
 import logging
 
-from utils.tmdb_api import search_tmdb_movies, get_tmdb_image_url
+from utils.tmdb_api import search_movies_tmdb, get_tmdb_image_url # Changed search_tmdb_movies to search_movies_tmdb
 from utils.database import set_user_state, clear_user_state, get_user_state
 from utils.helpers import format_movie_info
 
