@@ -22,7 +22,7 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY", "bb5f40c5be4b24660cbdc20c2409835e") # G
 TMDB_BASE_URL = "https://api.themoviedb.org/3" 
 
 # Database Configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bot_data.db") # SQLite database file
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bot_data.db") # Changed to sqlite+aiosqlite
 
 # Logging Configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper() # INFO, DEBUG, WARNING, ERROR, CRITICAL
