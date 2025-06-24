@@ -1,58 +1,55 @@
-# utils/helpers.py
+import logging
 from pyrogram import Client
-from pyrogram.types import Message
-import re
-from rapidfuzz import fuzz
-from config import TMDB_IMAGE_BASE_URL
-from utils.tmdb_api import get_tmdb_image_url
+from utils.database import get_request_by_tmdb_id # Import the new DB function
 
-async def search_channel_for_movie(
-    client: Client, channel_id: int, movie_title_fuzzy_match: str, limit: int = 100
-) -> Message | None:
-    """
-    Searches a channel's history for a movie title using fuzzy matching.
-    `movie_title_fuzzy_match` should be the cleaned, official title for better matching.
-    """
-    # Start with a direct query (cleaned title)
-    async for message in client.search_messages(
-        chat_id=channel_id, query=movie_title_fuzzy_match, limit=limit
-    ):
-        content = message.text or message.caption
-        if content:
-            cleaned_content = clean_movie_title(content)
-            # Higher threshold for direct search
-            if fuzz.ratio(cleaned_content, movie_title_fuzzy_match) > 85:
-                return message
+logger = logging.getLogger(__name__)
 
-    # If not found directly, try broader search (original query or parts of it if needed)
-    # This might require more advanced text analysis if you have complex channel naming
-    # For now, we'll rely heavily on the initial direct search with the TMDB title.
-    return None
+async def search_channel_for_movie(client: Client, channel_id: str, tmdb_id: int):
+    """
+    Searches the bot's internal database for a movie that has already been fulfilled
+    and has a channel_message_id. Returns the movie_request data if found, else None.
+    Bots cannot directly search Telegram channel messages.
+    """
+    logger.info(f"Checking internal database for fulfilled movie with TMDB ID: {tmdb_id}")
+    
+    # Search the database for any request with this TMDB ID that has been fulfilled
+    # and has a channel_message_id.
+    movie_request_data = await get_request_by_tmdb_id(tmdb_id)
+
+    if movie_request_data and movie_request_data.get("status") == "fulfilled" and movie_request_data.get("channel_message_id"):
+        logger.info(f"Movie with TMDB ID {tmdb_id} found as fulfilled in DB, channel_message_id: {movie_request_data['channel_message_id']}")
+        return movie_request_data # Return the full request data including channel_message_id
+    else:
+        logger.info(f"Movie with TMDB ID {tmdb_id} not found as fulfilled (or no channel_message_id) in DB.")
+        return None # Movie not found in our index
+
 
 def clean_movie_title(title: str) -> str:
-    """
-    Cleans a movie title for better comparison (e.g., removes special characters, common year patterns).
-    """
-    title = title.lower()
-    title = re.sub(r"\[.*?\]|\(.*?\)", "", title) # Remove text in brackets/parentheses
-    title = re.sub(r"\d{4}", "", title) # Remove 4-digit years
-    title = re.sub(r"[^a-z0-9\s]", "", title) # Remove non-alphanumeric characters
-    title = re.sub(r"\s+", " ", title).strip() # Replace multiple spaces with single space
-    return title
+    """Cleans a movie title for consistent searching."""
+    # Example: remove common suffixes like (2023), (UHD), [1080p]
+    # This is a very basic cleaning. More advanced cleaning might be needed.
+    cleaned_title = title.split('(')[0].split('[')[0].strip()
+    return cleaned_title
 
 def format_movie_info(movie_data: dict) -> str:
-    """Formats TMDB movie details into a readable string."""
-    title = movie_data.get("title", "N/A")
-    release_date = movie_data.get("release_date", "N/A")
-    overview = movie_data.get("overview", "No overview available.")
-    poster_path = movie_data.get("poster_path")
-    poster_url = get_tmdb_image_url(poster_path) if poster_path else "No Poster"
+    """Formats movie details for display."""
+    title = movie_data.get('title', 'N/A')
+    release_date = movie_data.get('release_date', 'N/A')
+    overview = movie_data.get('overview', 'No overview available.')
 
-    info = (
-        f"🎬 **Title:** `{title}`\n"
-        f"📅 **Release Date:** `{release_date}`\n\n"
-        f"📖 **Overview:**\n{overview}\n\n"
-        f"[Poster]({poster_url})" if poster_url else "No poster available."
+    # Truncate long overviews
+    if len(overview) > 500:
+        overview = overview[:497] + "..."
+
+    return (
+        f"🎬 **Title:** {title}\n"
+        f"🗓️ **Release Date:** {release_date}\n\n"
+        f"📝 **Overview:** {overview}"
     )
-    return info
-  
+
+def get_tmdb_image_url(poster_path: str, size: str = "w500") -> str:
+    """Constructs a TMDB image URL."""
+    if poster_path:
+        return f"https://image.tmdb.org/t/p/{size}{poster_path}"
+    return "https://via.placeholder.com/500x750?text=No+Poster" # Placeholder image
+    
