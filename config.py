@@ -13,9 +13,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "7549352926:AAGiDLjgMWBIH4VyuBCRHUfUkzCtx6bjl
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "1894915577")) # Your Telegram User ID (numeric)
 
 # Movie Channel ID (where movie files are stored)
-# IMPORTANT: This must be the NUMERIC ID of your public/private channel (e.g., -100123456789)
-# Your bot MUST be an administrator in this channel with 'Read Channel History' permission.
-MOVIE_CHANNEL_ID = int(os.getenv("MOVIE_CHANNEL_ID", "-1002444091857")) # Example: -1001234567890
+# IMPORTANT: Use a numeric ID (e.g., -100123456789) OR a public channel username (e.g., "@yourchannelname")
+# If using a username, the bot must be able to access the channel and it MUST be a public channel.
+MOVIE_CHANNEL_ID = os.getenv("MOVIE_CHANNEL_ID", "@dumprjddisb") # <<< MAKE SURE TO USE YOUR ACTUAL PUBLIC CHANNEL USERNAME HERE
 
 # TMDB API Key
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "bb5f40c5be4b24660cbdc20c2409835e") # Get from themoviedb.org
