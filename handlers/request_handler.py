@@ -24,8 +24,7 @@ async def handle_movie_request_command(client: Client, message: Message):
     logger.info(f"User {user_id} requested: '{movie_title}'")
 
     await client.send_chat_action(message.chat.id, ChatAction.TYPING)
-    tmdb_results = await search_tmdb_movies(movie_title)
-
+    tmdb_results = await search_movies_tmdb(movie_title)
     if not tmdb_results:
         await message.reply_text("No results found. Please try a different query.", parse_mode=ParseMode.MARKDOWN) # FIXED
         await clear_user_state(user_id)
