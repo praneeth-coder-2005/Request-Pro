@@ -1,159 +1,169 @@
-# utils/database.py (extended)
 import aiosqlite
-import asyncio
-from datetime import datetime
+import logging
 
-DATABASE_NAME = "movie_bot.db" # Renamed for clarity
+DB_NAME = "bot.db"
+logger = logging.getLogger(__name__)
 
 async def init_db():
-    """Initializes the database connection and creates tables."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        # Table for permanent movie requests
-        await db.execute("""
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        # Create movie_requests table
+        await cursor.execute('''
             CREATE TABLE IF NOT EXISTS movie_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
-                user_name TEXT,
-                tmdb_id INTEGER,
+                user_name TEXT NOT NULL,
+                tmdb_id INTEGER NOT NULL,
                 tmdb_title TEXT NOT NULL,
                 tmdb_overview TEXT,
                 tmdb_poster_path TEXT,
-                request_time TEXT NOT NULL,
-                status TEXT NOT NULL, -- 'pending', 'fulfilled', 'rejected', 'temp_selected'
-                fulfilled_link TEXT,
+                request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending',
                 admin_message_id INTEGER,
-                original_user_request_msg_id INTEGER -- To know which message to edit for user
+                original_user_request_msg_id INTEGER,
+                channel_message_id INTEGER,  -- NEW: Stores the message ID in the channel
+                fulfilled_link TEXT          -- NEW: Stores the permalink to the message or direct URL
             )
-        """)
-        # Table for temporary user states during the request process
-        # This helps manage multi-step interactions like TMDB search result selection
-        await db.execute("""
+        ''')
+        # Create user_states table
+        await cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_states (
                 user_id INTEGER PRIMARY KEY,
-                state TEXT NOT NULL, -- e.g., 'awaiting_tmdb_selection'
-                data TEXT -- JSON string of relevant data, e.g., list of TMDB results
+                state TEXT NOT NULL,
+                data TEXT
             )
-        """)
-        await db.commit()
-    print("Database initialized (movie_requests & user_states tables).")
+        ''')
+        await conn.commit()
+        logger.info("Database initialized (movie_requests & user_states tables).")
+    await conn.close()
 
+async def set_user_state(user_id: int, state: str, data: dict = None):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute(
+            "INSERT OR REPLACE INTO user_states (user_id, state, data) VALUES (?, ?, ?)",
+            (user_id, state, str(data))
+        )
+        await conn.commit()
+        logger.debug(f"User {user_id} state set to '{state}' with data {data}")
+    await conn.close()
 
-# --- Movie Request Functions ---
+async def get_user_state(user_id: int):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute("SELECT state, data FROM user_states WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+    await conn.close()
+    if row:
+        state, data_str = row
+        try:
+            data = eval(data_str) # Safely evaluate string to dict/list
+        except (SyntaxError, TypeError):
+            data = {} # Fallback if data is malformed
+        return state, data
+    return None, {}
 
-async def add_movie_request(request_data: dict) -> int:
-    """Adds a new movie request to the database."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        cursor = await db.execute(
+async def clear_user_state(user_id: int):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute("DELETE FROM user_states WHERE user_id = ?", (user_id,))
+        await conn.commit()
+        logger.debug(f"User {user_id} state cleared.")
+    await conn.close()
+
+async def add_movie_request(request_data: dict):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute(
             """
-            INSERT INTO movie_requests
-            (user_id, user_name, tmdb_id, tmdb_title, tmdb_overview, tmdb_poster_path, request_time, status, original_user_request_msg_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO movie_requests (user_id, user_name, tmdb_id, tmdb_title, tmdb_overview, tmdb_poster_path, original_user_request_msg_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                request_data["user_id"],
-                request_data["user_name"],
+                request_data.get("user_id"),
+                request_data.get("user_name"),
                 request_data.get("tmdb_id"),
-                request_data["tmdb_title"],
+                request_data.get("tmdb_title"),
                 request_data.get("tmdb_overview"),
                 request_data.get("tmdb_poster_path"),
-                datetime.now().isoformat(),
-                request_data.get("status", "pending"),
                 request_data.get("original_user_request_msg_id")
             )
         )
-        await db.commit()
-        return cursor.lastrowid
+        await conn.commit()
+        request_id = cursor.lastrowid
+        logger.info(f"Movie request added with ID: {request_id} for user {request_data.get('user_id')}")
+        return request_id
+    await conn.close()
 
-async def get_request_by_id(request_id: int) -> dict | None:
-    """Retrieves a movie request by its ID."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM movie_requests WHERE id = ?",
+async def get_request_by_id(request_id: int):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute(
+            "SELECT id, user_id, user_name, tmdb_id, tmdb_title, tmdb_overview, tmdb_poster_path, "
+            "request_date, status, admin_message_id, original_user_request_msg_id, "
+            "channel_message_id, fulfilled_link FROM movie_requests WHERE id = ?",
             (request_id,)
         )
         row = await cursor.fetchone()
-        if row:
-            data = dict(row)
-            if data.get("request_time"):
-                data["request_time"] = datetime.fromisoformat(data["request_time"])
-            return data
-        return None
+    await conn.close()
+    if row:
+        columns = [description[0] for description in cursor.description]
+        return dict(zip(columns, row))
+    return None
 
-async def update_request_status(request_id: int, status: str, fulfilled_link: str = None) -> bool:
-    """Updates the status of a movie request."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
+async def get_request_by_tmdb_id(tmdb_id: int):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        # Fetch the latest fulfilled request for this TMDB ID
+        await cursor.execute(
+            "SELECT id, user_id, user_name, tmdb_id, tmdb_title, tmdb_overview, tmdb_poster_path, "
+            "request_date, status, admin_message_id, original_user_request_msg_id, "
+            "channel_message_id, fulfilled_link FROM movie_requests WHERE tmdb_id = ? AND status = 'fulfilled' AND channel_message_id IS NOT NULL ORDER BY id DESC LIMIT 1",
+            (tmdb_id,)
+        )
+        row = await cursor.fetchone()
+    await conn.close()
+    if row:
+        columns = [description[0] for description in cursor.description]
+        return dict(zip(columns, row))
+    return None
+
+async def update_request_status(request_id: int, status: str, fulfilled_link: str = None):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
         if fulfilled_link:
-            cursor = await db.execute(
+            await cursor.execute(
                 "UPDATE movie_requests SET status = ?, fulfilled_link = ? WHERE id = ?",
                 (status, fulfilled_link, request_id)
             )
         else:
-            cursor = await db.execute(
+            await cursor.execute(
                 "UPDATE movie_requests SET status = ? WHERE id = ?",
                 (status, request_id)
             )
-        await db.commit()
-        return cursor.rowcount > 0
+        await conn.commit()
+        logger.info(f"Updated request {request_id} status to '{status}'. Link: {fulfilled_link}")
+    await conn.close()
 
-async def update_request_admin_message_id(request_id: int, admin_message_id: int) -> bool:
-    """Updates the admin message ID for a request."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        cursor = await db.execute(
+async def update_request_admin_message_id(request_id: int, admin_message_id: int):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute(
             "UPDATE movie_requests SET admin_message_id = ? WHERE id = ?",
             (admin_message_id, request_id)
         )
-        await db.commit()
-        return cursor.rowcount > 0
+        await conn.commit()
+        logger.info(f"Updated request {request_id} with admin_message_id: {admin_message_id}")
+    await conn.close()
 
-async def get_user_requests(user_id: int) -> list[dict]:
-    """Retrieves all active requests for a specific user."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM movie_requests WHERE user_id = ? AND status IN ('pending', 'temp_selected') ORDER BY request_time DESC",
-            (user_id,)
+async def update_movie_channel_id(request_id: int, channel_msg_id: int):
+    conn = await aiosqlite.connect(DB_NAME)
+    async with conn.cursor() as cursor:
+        await cursor.execute(
+            "UPDATE movie_requests SET channel_message_id = ? WHERE id = ?",
+            (channel_msg_id, request_id)
         )
-        rows = await cursor.fetchall()
-        requests = []
-        for row in rows:
-            data = dict(row)
-            if data.get("request_time"):
-                data["request_time"] = datetime.fromisoformat(data["request_time"])
-            requests.append(data)
-        return requests
-
-# --- User State Functions ---
-import json
-
-async def set_user_state(user_id: int, state: str, data: dict = None):
-    """Sets a user's current interaction state."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        data_str = json.dumps(data) if data else None
-        await db.execute(
-            """
-            INSERT OR REPLACE INTO user_states (user_id, state, data)
-            VALUES (?, ?, ?)
-            """,
-            (user_id, state, data_str)
-        )
-        await db.commit()
-
-async def get_user_state(user_id: int) -> tuple[str | None, dict | None]:
-    """Gets a user's current interaction state and associated data."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT state, data FROM user_states WHERE user_id = ?", (user_id,))
-        row = await cursor.fetchone()
-        if row:
-            state = row["state"]
-            data = json.loads(row["data"]) if row["data"] else None
-            return state, data
-        return None, None
-
-async def clear_user_state(user_id: int):
-    """Clears a user's interaction state."""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        await db.execute("DELETE FROM user_states WHERE user_id = ?", (user_id,))
-        await db.commit()
-                                 
+        await conn.commit()
+        logger.info(f"Updated request {request_id} with channel_message_id: {channel_msg_id}")
+    await conn.close()
+                                   
