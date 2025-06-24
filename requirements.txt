@@ -5,3 +5,4 @@ rapidfuzz
 aiohttp           # For async HTTP requests (TMDB API)
 asyncio
 pillow            # For image manipulation (if you resize/process thumbnails) - optional for now
+tgs-crypto
