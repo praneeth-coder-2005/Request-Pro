@@ -2,7 +2,7 @@
 import logging
 from pyrogram import Client
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from utils.database import get_request_by_id, update_request_status, set_user_state, clear_user_state, update_movie_channel_id
+from utils.database import get_request_by_id, update_request_status, set_user_state, clear_user_state
 from config import ADMIN_CHAT_ID # Only ADMIN_CHAT_ID needed here
 
 logger = logging.getLogger(__name__)
@@ -66,12 +66,6 @@ async def handle_admin_reject_callback(client: Client, callback_query: CallbackQ
         logger.warning(f"Failed to notify user {request_data['user_id']} about rejected request {request_id}: {e}")
     logger.info(f"Admin rejected request {request_id}.")
 
-# NOTE: The 'Fulfill (Done Uploading)' button logic is now handled implicitly by admin_handler.py
-#       receiving a file/URL REPLY from the admin when in 'awaiting_admin_upload' state.
-#       So, there is no direct 'admin_complete_fulfillment_' callback.
-#       We will keep this placeholder as the last chunk in the original callback_handler.py
-#       had it, but it should technically not be triggered by a direct button now.
-#       The 'admin_handler.py' takes over after the 'approve' button.
 async def handle_admin_complete_fulfillment_callback(client: Client, callback_query: CallbackQuery):
     """
     Placeholder: This callback is likely deprecated in the new flow
@@ -79,6 +73,4 @@ async def handle_admin_complete_fulfillment_callback(client: Client, callback_qu
     """
     await callback_query.answer("This button's functionality has been integrated into the file/URL reply mechanism.")
     logger.info(f"Admin {callback_query.from_user.id} clicked deprecated fulfillment button.")
-    # We can log this but don't need to do much more.
-    # The actual fulfillment logic is in admin_handler.py now.
-
+    
