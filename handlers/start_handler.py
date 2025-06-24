@@ -1,4 +1,3 @@
-%%writefile your_movie_bot/handlers/start_handler.py
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
