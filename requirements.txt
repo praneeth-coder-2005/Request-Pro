@@ -1,7 +1,2 @@
 pyrogram==2.0.106
-python-dotenv==1.0.1
-aiohttp==3.9.5
-loguru==0.7.2
-tmdbv3api==1.9.0
-sqlalchemy==2.0.30
-sqlalchemy[asyncio]==2.0.30
+tgcrypto
