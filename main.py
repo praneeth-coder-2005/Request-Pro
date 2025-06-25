@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
-from config import BOT_TOKEN, API_ID, API_HASH
-from handlers import start, request
+from pyrogram.types import Message, CallbackQuery
+from config import BOT_TOKEN, API_ID, API_HASH, UPDATE_CHANNEL
+from handlers import start, request, delivery
 
 app = Client(
     "movie_request_bot",
@@ -9,37 +10,53 @@ app = Client(
     api_hash=API_HASH
 )
 
-# Start command
+# /start handler
 @app.on_message(filters.command("start") & filters.private)
-async def start_command(client, message):
+async def start_handler(client: Client, message: Message):
+    # Check if user joined update channel
+    if UPDATE_CHANNEL:
+        try:
+            member = await client.get_chat_member(UPDATE_CHANNEL, message.chat.id)
+            if member.status not in ("member", "administrator", "creator"):
+                invite = await client.create_chat_invite_link(UPDATE_CHANNEL)
+                await message.reply(
+                    f"🔔 Please join our update channel first to use this bot.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📢 Join Channel", url=invite.invite_link)
+                    ]])
+                )
+                return
+        except Exception as e:
+            await message.reply("❌ Unable to verify channel join. Try again later.")
+            return
+
     await start.handle_start(client, message)
 
-# /request command
+# /request handler
 @app.on_message(filters.command("request") & filters.private)
-async def request_command(client, message):
+async def request_handler(client: Client, message: Message):
     await request.handle_request_command(client, message)
 
-# Handle callback button from start message
-@app.on_callback_query(filters.regex("request_movie"))
-async def handle_request_button(client, callback_query):
-    await callback_query.message.reply("🎬 Please type the movie name using /request <movie name>")
-
-# Handle TMDb movie selection
+# TMDB movie selection
 @app.on_callback_query(filters.regex(r"select_movie_\d+"))
-async def handle_movie_selection(client, callback_query):
+async def select_movie_handler(client: Client, callback_query: CallbackQuery):
     await request.handle_movie_selection(client, callback_query)
 
-# Confirm or retry request
+# Confirmation handler
 @app.on_callback_query(filters.regex(r"confirm_(yes|retry)_\d+"))
-async def handle_confirmation(client, callback_query):
+async def confirm_handler(client: Client, callback_query: CallbackQuery):
     await request.handle_confirmation(client, callback_query)
+
+# Movie quality filter trigger
 @app.on_callback_query(filters.regex(r"deliver_movie_\d+"))
-async def deliver_movie(client, callback_query):
+async def deliver_movie_handler(client: Client, callback_query: CallbackQuery):
     await delivery.handle_delivery(client, callback_query)
 
+# Send files by quality
 @app.on_callback_query(filters.regex(r"send_(1080p|720p|480p|others)_\d+"))
-async def deliver_quality_files(client, callback_query):
+async def send_quality_files_handler(client: Client, callback_query: CallbackQuery):
     await delivery.handle_send_quality(client, callback_query)
+
 if __name__ == "__main__":
-    print("Bot is running...")
+    print("✅ Bot is running...")
     app.run()
