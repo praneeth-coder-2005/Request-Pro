@@ -1,15 +1,15 @@
 # config.py
 import os
 
-API_ID = int(os.environ.get("API_ID", "YOUR_API_ID"))
-API_HASH = os.environ.get("API_HASH", "YOUR_API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN")
+API_ID = int(os.environ.get("API_ID", "22250562"))
+API_HASH = os.environ.get("API_HASH", "07754d3bdc27193318ae5f6e6c8016af")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "7549352926:AAGiDLjgMWBIH4VyuBCRHUfUkzCtx6bjlGg")
 
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "YOUR_ADMIN_CHAT_ID")) # Your numerical user ID
-MOVIE_CHANNEL_ID = int(os.environ.get("MOVIE_CHANNEL_ID", "YOUR_MOVIE_CHANNEL_ID")) # IMPORTANT: Numeric ID like -100123456789
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "1894915577")) # Your numerical user ID
+MOVIE_CHANNEL_ID = int(os.environ.get("MOVIE_CHANNEL_ID", "@dumprjddisb")) # IMPORTANT: Numeric ID like -100123456789
 
 # TMDB API Key
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "YOUR_TMDB_API_KEY")
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "bb5f40c5be4b24660cbdc20c2409835e")
 
 # Logging level
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
