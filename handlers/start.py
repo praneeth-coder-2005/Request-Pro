@@ -4,7 +4,7 @@ async def handle_start(client, message: Message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📥 Request Movie", callback_data="request_movie")],
         [InlineKeyboardButton("📃 How It Works", callback_data="how_it_works")],
-        [InlineKeyboardButton("📢 Updates Channel", url="https://t.me/yourchannel")],
+        [InlineKeyboardButton("📢 Updates Channel", url="https://t.me/ClawMoviez")],
     ])
 
     welcome_text = f"""
