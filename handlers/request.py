@@ -1,7 +1,7 @@
 import requests
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-TMDB_API_KEY = "DEMO_KEY_HERE"  # Replace with your actual TMDB key
+TMDB_API_KEY = "bb5f40c5be4b24660cbdc20c2409835e"  # Replace with your actual TMDB key
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_MOVIE_DETAILS_URL = "https://api.themoviedb.org/3/movie/{}"
 
