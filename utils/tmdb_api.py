@@ -1,40 +1,86 @@
+import httpx
 import logging
-import asyncio # New import for running synchronous code asynchronously
-from tmdbv3api import TMDb, Movie # New imports for the tmdbv3api library
-from config import TMDB_API_KEY
+import os
 
 logger = logging.getLogger(__name__)
 
-# Initialize TMDb API client once globally
-tmdb = TMDb()
-movie_api = Movie() # Create an instance of Movie API as it's reusable
+# Load TMDB API Key from environment variables
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY")
+TMDB_BASE_URL = "https://api.themoviedb.org/3"
 
-async def search_movie_tmdb(query: str):
-    """Searches for movies on TMDB using tmdbv3api."""
+async def search_movies_tmdb(query: str) -> list:
+    """
+    Searches for movies on TMDB using the provided query.
+    Returns a list of dictionaries, each containing relevant movie details.
+    """
     if not TMDB_API_KEY:
-        logger.error("TMDB_API_KEY is not set in config.py")
+        logger.error("TMDB_API_KEY is not set in environment variables.")
         return []
 
-    # Set API key for the current instance.
-    # This is important if `tmdb` object is reused across async tasks.
-    tmdb.api_key = TMDB_API_KEY
+    url = f"{TMDB_BASE_URL}/search/movie"
+    params = {
+        "api_key": TMDB_API_KEY,
+        "query": query,
+        "include_adult": False # Exclude adult content
+    }
 
     try:
-        # Run the synchronous API call in a separate thread to avoid blocking the event loop
-        search_results = await asyncio.to_thread(movie_api.search, query)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
+            data = response.json()
+            movies = data.get("results", [])
 
-        movies = []
-        for movie in search_results:
-            # tmdbv3api objects directly have attributes for movie data
-            if not movie.adult: # Filter out adult content
-                movies.append({
-                    "id": movie.id,
-                    "title": movie.title,
-                    "release_date": movie.release_date if hasattr(movie, 'release_date') else "N/A",
-                    "poster_path": movie.poster_path
+            # Extract relevant fields for each movie
+            extracted_movies = []
+            for movie in movies:
+                extracted_movies.append({
+                    "id": movie.get("id"),
+                    "title": movie.get("title"),
+                    "release_date": movie.get("release_date"),
+                    "overview": movie.get("overview"),
+                    "poster_path": movie.get("poster_path")
                 })
-        return movies
+            return extracted_movies
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error searching TMDB for '{query}': {e.response.status_code} - {e.response.text}")
+    except httpx.RequestError as e:
+        logger.error(f"Network error searching TMDB for '{query}': {e}")
     except Exception as e:
-        logger.error(f"An error occurred during TMDB search with tmdbv3api: {e}", exc_info=True)
-        return []
-        
+        logger.error(f"An unexpected error occurred while searching TMDB for '{query}': {e}", exc_info=True)
+    return []
+
+async def get_movie_details_tmdb(movie_id: int) -> dict:
+    """
+    Fetches detailed information for a specific movie from TMDB.
+    """
+    if not TMDB_API_KEY:
+        logger.error("TMDB_API_KEY is not set in environment variables.")
+        return {}
+
+    url = f"{TMDB_BASE_URL}/movie/{movie_id}"
+    params = {
+        "api_key": TMDB_API_KEY
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error fetching TMDB details for movie ID {movie_id}: {e.response.status_code} - {e.response.text}")
+    except httpx.RequestError as e:
+        logger.error(f"Network error fetching TMDB details for movie ID {movie_id}: {e}")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while fetching TMDB details for movie ID {movie_id}: {e}", exc_info=True)
+    return {}
+
+def get_tmdb_image_url(poster_path: str, size: str = "w500") -> str:
+    """
+    Constructs a TMDB image URL.
+    """
+    if poster_path:
+        return f"https://image.tmdb.org/t/p/{size}{poster_path}"
+    return "https://via.placeholder.com/500x750?text=No+Poster" # Placeholder image
+
