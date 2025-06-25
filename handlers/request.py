@@ -1,12 +1,11 @@
 import requests
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-TMDB_API_KEY = "bb5f40c5be4b24660cbdc20c2409835e"  # Replace with your actual TMDB key
+TMDB_API_KEY = "bb5f40c5be4b24660cbdc20c2409835e"  # Replace with your TMDb key
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_MOVIE_DETAILS_URL = "https://api.themoviedb.org/3/movie/{}"
 
 movie_cache = {}  # Used to store last search results for each user
-
 
 async def handle_request_command(client, message: Message):
     if len(message.command) < 2:
@@ -15,7 +14,6 @@ async def handle_request_command(client, message: Message):
 
     query = " ".join(message.command[1:])
     await search_and_respond(client, message, query)
-
 
 async def search_and_respond(client, message, query):
     params = {
@@ -40,7 +38,6 @@ async def search_and_respond(client, message, query):
 
     await message.reply("🔍 **Select the correct movie:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-
 async def handle_movie_selection(client, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     movie_index = int(callback_query.data.split("_")[-1])
@@ -53,7 +50,6 @@ async def handle_movie_selection(client, callback_query: CallbackQuery):
     movie = movie_list[movie_index]
     movie_id = movie["id"]
 
-    # Get full movie details
     r = requests.get(TMDB_MOVIE_DETAILS_URL.format(movie_id), params={"api_key": TMDB_API_KEY})
     data = r.json()
     poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get("poster_path") else None
@@ -79,8 +75,9 @@ async def handle_movie_selection(client, callback_query: CallbackQuery):
 
     await callback_query.answer()
 
-
 async def handle_confirmation(client, callback_query: CallbackQuery):
+    from .delivery import handle_delivery  # avoid circular import
+
     action, index = callback_query.data.split("_")[1:]
     user_id = callback_query.from_user.id
     movie_list = movie_cache.get(user_id)
@@ -90,17 +87,13 @@ async def handle_confirmation(client, callback_query: CallbackQuery):
         return
 
     if action == "yes":
-    await callback_query.message.reply("🔍 Searching in our movie channel...")
-    await callback_query.message.reply("Please wait...", reply_markup=InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Searching...", callback_data=f"deliver_movie_{index}")]]
-    ))
+        # FIXED: Properly trigger delivery system
+        await handle_delivery(client, callback_query)
     else:
-        # Retry flow — show selection buttons again
         buttons = [
             [InlineKeyboardButton(f"{i+1}. {movie['title']} ({movie.get('release_date', 'N/A')[:4]})",
                                   callback_data=f"select_movie_{i}")]
             for i, movie in enumerate(movie_list)
         ]
         await callback_query.message.reply("🔍 **Select the correct movie:**", reply_markup=InlineKeyboardMarkup(buttons))
-
-    await callback_query.answer()
+        await callback_query.answer()
