@@ -42,3 +42,9 @@ async def send_quality_files_handler(client: Client, callback_query: CallbackQue
 if __name__ == "__main__":
     print("✅ Bot is running...")
     app.run()
+from handlers.cache import scan_and_store_file
+
+# Watch for uploads in file channel
+@app.on_message(filters.channel & filters.chat(MOVIE_CHANNEL))
+async def index_collector(client, message):
+    await scan_and_store_file(message)
