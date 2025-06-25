@@ -1,6 +1,5 @@
 import requests
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from config import TMDB_API_KEY
 
 movie_cache = {}
 
