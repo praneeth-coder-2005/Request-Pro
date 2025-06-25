@@ -92,3 +92,9 @@ async def handle_send_quality(client, callback_query: CallbackQuery):
         await msg.copy(chat_id=callback_query.message.chat.id)
 
     await callback_query.answer("✅ Delivered files!")
+from handlers.cache import deliver_file
+
+async def handle_delivery(client, callback_query):
+    # same code as before to get title and index
+    ...
+    await deliver_file(client, callback_query, title.lower(), "any")  # you can handle quality in separate callback
