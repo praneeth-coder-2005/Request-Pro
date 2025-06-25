@@ -1,9 +1,6 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-# START handler
-@Client.on_message(filters.command("start") & filters.private)
-async def start_handler(client, message: Message):
+async def handle_start(client, message: Message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📥 Request Movie", callback_data="request_movie")],
         [InlineKeyboardButton("📃 How It Works", callback_data="how_it_works")],
@@ -13,12 +10,14 @@ async def start_handler(client, message: Message):
     welcome_text = f"""
 👋 **Welcome {message.from_user.first_name}!**
 
-🎬 I'm a powerful **Movie Request Bot** that helps you:
-• Request your favorite movies
-• Get fast responses from admins
-• Track requested movies
+🎬 I'm your Movie Request Bot!
 
-Stay tuned and enjoy the experience!
+✅ Features:
+• Request any movie
+• Track your requests
+• Get fast admin replies
+
+Stay tuned and enjoy!
     """
 
     await message.reply(welcome_text, reply_markup=keyboard)
