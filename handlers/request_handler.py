@@ -1,6 +1,0 @@
-# Inside handlers/request_handler.py
-from utils.tmdb_api import search_movies_tmdb, get_tmdb_image_url # Ensure this line is correct
-# ...
-async def handle_movie_request_command(client: Client, message: Message):
-    # ...
-    tmdb_results = await search_movies_tmdb(movie_title) # Ensure this line is correct
