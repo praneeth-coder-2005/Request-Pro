@@ -10,28 +10,10 @@ app = Client(
     api_hash=API_HASH
 )
 
-# /start handler
+# /start handler (no update channel check)
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
-    # Check if user joined update channel
-    if UPDATE_CHANNEL:
-        try:
-            member = await client.get_chat_member(UPDATE_CHANNEL, message.chat.id)
-            if member.status not in ("member", "administrator", "creator"):
-                invite = await client.create_chat_invite_link(UPDATE_CHANNEL)
-                await message.reply(
-                    f"🔔 Please join our update channel first to use this bot.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("📢 Join Channel", url=invite.invite_link)
-                    ]])
-                )
-                return
-        except Exception as e:
-            await message.reply("❌ Unable to verify channel join. Try again later.")
-            return
-
     await start.handle_start(client, message)
-
 # /request handler
 @app.on_message(filters.command("request") & filters.private)
 async def request_handler(client: Client, message: Message):
