@@ -1,24 +1,20 @@
-import logging
+# handlers/admin_handler.py
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from config import ADMIN_CHAT_ID # Make sure ADMIN_CHAT_ID is imported
+import logging
+
+from config import ADMIN_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("admin_status") & filters.private)
+# This handler now serves as a placeholder for general admin commands
+# It no longer handles replies for movie fulfillment, as that's moved to auto-indexing.
+
+@Client.on_message(filters.command("admin_status") & filters.user(ADMIN_CHAT_ID) & filters.private)
 async def admin_status_command(client: Client, message: Message):
     """
-    Handles the /admin_status command.
-    Only accessible by the ADMIN_CHAT_ID.
+    Example: A simple admin command to check bot status.
     """
-    if message.from_user.id != ADMIN_CHAT_ID:
-        await message.reply_text("You are not authorized to use this command.")
-        logger.warning(f"Unauthorized access to /admin_status from user {message.from_user.id}.")
-        return
-
-    await message.reply_text(
-        "Hello, Admin! Your bot is running.\n\n"
-        "You can manage movie requests through the messages forwarded to this chat."
-    )
+    await message.reply_text("Bot is running normally. Auto-indexing feature is active. Remember to include #TMDB<ID> in channel posts.")
     logger.info(f"Admin {message.from_user.id} checked bot status.")
 
