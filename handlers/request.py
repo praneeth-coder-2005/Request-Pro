@@ -90,7 +90,10 @@ async def handle_confirmation(client, callback_query: CallbackQuery):
         return
 
     if action == "yes":
-        await callback_query.message.reply("✅ Your movie request has been recorded!")
+    await callback_query.message.reply("🔍 Searching in our movie channel...")
+    await callback_query.message.reply("Please wait...", reply_markup=InlineKeyboardMarkup(
+        [[InlineKeyboardButton("Searching...", callback_data=f"deliver_movie_{index}")]]
+    ))
     else:
         # Retry flow — show selection buttons again
         buttons = [
