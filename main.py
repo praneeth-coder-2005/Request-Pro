@@ -33,7 +33,13 @@ async def handle_movie_selection(client, callback_query):
 @app.on_callback_query(filters.regex(r"confirm_(yes|retry)_\d+"))
 async def handle_confirmation(client, callback_query):
     await request.handle_confirmation(client, callback_query)
+@app.on_callback_query(filters.regex(r"deliver_movie_\d+"))
+async def deliver_movie(client, callback_query):
+    await delivery.handle_delivery(client, callback_query)
 
+@app.on_callback_query(filters.regex(r"send_(1080p|720p|480p|others)_\d+"))
+async def deliver_quality_files(client, callback_query):
+    await delivery.handle_send_quality(client, callback_query)
 if __name__ == "__main__":
     print("Bot is running...")
     app.run()
